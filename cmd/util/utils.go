@@ -15,6 +15,12 @@ import (
 	"github.com/seeleteam/go-seele/core/types"
 	"github.com/seeleteam/go-seele/crypto"
 	"github.com/seeleteam/go-seele/rpc"
+	"github.com/seeleteam/go-seele/seele"
+)
+
+const (
+	// DefaultNonce is the default value of nonce,when you are not set the nonce flag in client sendtx command by --nonce .
+	DefaultNonce uint64 = 0
 )
 
 type TxInfo struct {
@@ -23,6 +29,40 @@ type TxInfo struct {
 	From    *string // from is the key file path of the sender
 	Fee     *string // transaction fee
 	Payload *string // transaction payload in hex format
+	Nonce   *uint64 // nonce number in transaction or contract
+}
+
+// Call call a transaction via RPC.
+func Call(client *rpc.Client, from *ecdsa.PrivateKey, to *common.Address, amount *big.Int, fee *big.Int, nonce uint64, payload []byte) (*map[string]interface{}, bool) {
+	fromAddr := crypto.GetAddress(&from.PublicKey)
+
+	var tx *types.Transaction
+	var err error
+	switch to.Type() {
+	case common.AddressTypeContract:
+		tx, err = types.NewMessageTransaction(*fromAddr, *to, amount, fee, nonce, payload)
+	default:
+		fmt.Println("unsupported address type:", to.Type())
+		return nil, false
+	}
+
+	if err != nil {
+		fmt.Println("failed to create transaction:", err)
+		return nil, false
+	}
+	tx.Sign(from)
+
+	request := seele.CallRequest{
+		Tx:     tx,
+		Height: -1,
+	}
+	result := make(map[string]interface{})
+	if err = client.Call("seele.Call", &request, &result); err != nil {
+		fmt.Println("failed to call contract:", err.Error())
+		return nil, false
+	}
+
+	return &result, true
 }
 
 // Sendtx sends a transaction via RPC.
@@ -100,16 +140,25 @@ func CheckParameter(parameter TxInfo, publicKey *ecdsa.PublicKey, client *rpc.Cl
 	}
 	info.Fee = fee
 
-	var nonce uint64
 	fromAddr := crypto.GetAddress(publicKey)
 	info.From = *fromAddr
+
+	var nonce uint64
 	err = client.Call("seele.GetAccountNonce", fromAddr, &nonce)
 	if err != nil {
 		fmt.Printf("getting the sender account nonce failed: %s\n", err.Error())
 		return info, false
 	}
-	fmt.Printf("got the sender account %s nonce: %d\n", fromAddr.ToHex(), nonce)
-	info.AccountNonce = nonce
+	if *parameter.Nonce == nonce || *parameter.Nonce == DefaultNonce {
+		info.AccountNonce = nonce
+	} else {
+		if *parameter.Nonce < nonce {
+			fmt.Printf("your nonce is: %d,current nonce is: %d,you must set your nonce greater than or equal to current nonce\n", *parameter.Nonce, nonce)
+			return info, false
+		}
+		info.AccountNonce = *parameter.Nonce
+	}
+	fmt.Printf(" the sender account %s current nonce: %d,sending nonce: %d\n", fromAddr.ToHex(), nonce, info.AccountNonce)
 
 	payload := []byte(nil)
 	if len(*parameter.Payload) > 0 {
