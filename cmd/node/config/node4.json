@@ -20,7 +20,7 @@
   },
   "httpServer": {
     "address": "127.0.0.1:8036",
-    "crosssorgins": [
+    "crossorigins": [
       "*"
     ],
     "whiteHost": [
@@ -29,7 +29,9 @@
   },
   "wsserver": {
     "address": "127.0.0.1:8046",
-    "pattern": "/ws"
+    "crossorigins": [
+      "*"
+    ]
   },
   "metrics": {
     "address": "127.0.0.1:8087",

@@ -39,6 +39,20 @@ func NewCmdData() []*Request {
 				fmt.Printf("transaction numbers: %d\n", len(txs))
 			},
 		},
+
+		&Request{
+			Use:   "getlogs",
+			Short: "get logs of the block",
+			Long: `get logs of the block
+			For example:
+			  client.exe getlogs --height <block height> --address 0x<contract address> --topic 0x<event name hash>
+			  client.exe getlogs -a 127.0.0.1:8027 --height <block height> --address 0x<contract address> --topic 0x<event name hash>`,
+			ParamReflectType: "GetLogsRequest",
+			Method:           "seele.GetLogs",
+			UseWebsocket:     false,
+			Params:           []*Param{paramBlockHeight, paramContractAddress, paramTopic},
+		},
+
 		&Request{
 			Use:   "getblockrlp",
 			Short: "get block rlp hex by block height",
@@ -184,7 +198,7 @@ func NewCmdData() []*Request {
 					Required:     true,
 				},
 			},
-			Handler: func(interface{}) { fmt.Println("succeed to set miner thread number") },
+			Handler: func(interface{}) { fmt.Println("miner thread number setted successfully") },
 		},
 		&Request{
 			Use:   "setcoinbase",
@@ -205,7 +219,7 @@ func NewCmdData() []*Request {
 					Required:     true,
 				},
 			},
-			Handler: func(interface{}) { fmt.Println("succeed to set miner coinbase") },
+			Handler: func(interface{}) { fmt.Println("miner coinbase setted successfully") },
 		},
 		&Request{
 			Use:              "getdownloadstatus",
@@ -294,7 +308,7 @@ func NewCmdData() []*Request {
 					Required:     false,
 				},
 			},
-			Handler: func(interface{}) { fmt.Println("succeed to dump heap.") },
+			Handler: func(interface{}) { fmt.Println("heap dumped successfully") },
 		},
 	}
 }

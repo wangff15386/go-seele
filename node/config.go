@@ -11,7 +11,6 @@ import (
 	"github.com/seeleteam/go-seele/log/comm"
 	"github.com/seeleteam/go-seele/metrics"
 	"github.com/seeleteam/go-seele/p2p"
-	"github.com/seeleteam/go-seele/rpc"
 )
 
 // Config is the Configuration of node
@@ -32,7 +31,7 @@ type Config struct {
 	SeeleConfig SeeleConfig
 
 	// The configuration of websocket rpc service
-	WSServerConfig rpc.WSServerConfig
+	WSServerConfig WSServerConfig
 
 	// metrics config info
 	MetricsConfig *metrics.Config
@@ -64,10 +63,18 @@ type HTTPServer struct {
 	// HTTPCors is the Cross-Origin Resource Sharing header to send to requesting
 	// clients. Please be aware that CORS is a browser enforced security, it's fully
 	// useless for custom HTTP clients.
-	HTTPCors []string `json:"crosssorgins"`
+	HTTPCors []string `json:"crossorigins"`
 
 	// HTTPHostFilter is the whitelist of hostnames which are allowed on incoming requests.
 	HTTPWhiteHost []string `json:"whiteHost"`
+}
+
+// WSServerConfig config for websocket server
+type WSServerConfig struct {
+	// The Address is the address of Websocket rpc service
+	Address string `json:"address"`
+
+	CrossOrigins []string `json:"crossorigins"`
 }
 
 // Config is the seele's configuration to create seele service

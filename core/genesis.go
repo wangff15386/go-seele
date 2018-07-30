@@ -39,7 +39,7 @@ type GenesisInfo struct {
 	// map key is account address -> value is account balance
 	Accounts map[common.Address]*big.Int `json:"accounts"`
 
-	// Difficult initial difficult for mining. Use bigger difficult as you can. Because block is choose by total difficult
+	// Difficult initial difficult for mining. Use bigger difficult as you can. Because block is chosen by total difficult
 	Difficult int64 `json:"difficult"`
 
 	// ShardNumber is the shard number of genesis block.
@@ -62,7 +62,7 @@ func GetGenesis(info GenesisInfo) *Genesis {
 		panic(err)
 	}
 
-	stateRootHash, err := statedb.Commit(nil)
+	stateRootHash, err := statedb.Hash()
 	if err != nil {
 		panic(err)
 	}
@@ -72,7 +72,7 @@ func GetGenesis(info GenesisInfo) *Genesis {
 	return &Genesis{
 		header: &types.BlockHeader{
 			PreviousBlockHash: common.EmptyHash,
-			Creator:           common.Address{},
+			Creator:           common.EmptyAddress,
 			StateHash:         stateRootHash,
 			TxHash:            types.MerkleRootHash(nil),
 			Difficulty:        big.NewInt(info.Difficult),
@@ -106,12 +106,12 @@ func (genesis *Genesis) InitializeAndValidate(bcStore store.BlockchainStore, acc
 
 	storedGenesis, err := bcStore.GetBlock(storedGenesisHash)
 	if err != nil {
-		return errors.New(fmt.Sprintf("get genesis block failed. %s", err))
+		return fmt.Errorf("failed to get genesis block. %s", err)
 	}
 
 	data, err := getGenesisExtraData(storedGenesis)
 	if err != nil {
-		return errors.New(fmt.Sprintf("get genesis extra data failed. %s", err))
+		return fmt.Errorf("failed to get genesis extra data. %s", err)
 	}
 
 	if data.ShardNumber != genesis.info.ShardNumber {
@@ -150,9 +150,8 @@ func getStateDB(info GenesisInfo) (*state.Statedb, error) {
 
 	for addr, amount := range info.Accounts {
 		if !common.IsShardEnabled() || addr.Shard() == info.ShardNumber {
-			stateObj := statedb.GetOrNewStateObject(addr)
-			stateObj.SetNonce(0)
-			stateObj.SetAmount(amount)
+			statedb.CreateAccount(addr)
+			statedb.SetBalance(addr, amount)
 		}
 	}
 

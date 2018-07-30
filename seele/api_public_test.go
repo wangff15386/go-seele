@@ -52,7 +52,8 @@ func Test_PublicSeeleAPI(t *testing.T) {
 
 	api := NewPublicSeeleAPI(ss)
 	var info MinerInfo
-	api.GetInfo(nil, &info)
+	info, err = api.GetInfo()
+	assert.Equal(t, err, nil)
 
 	if !bytes.Equal(conf.SeeleConfig.Coinbase[0:], info.Coinbase[0:]) {
 		t.Fail()
@@ -80,7 +81,8 @@ func Test_Call(t *testing.T) {
 		Tx:     getTx,
 		Height: -1,
 	}
-	err = api.Call(&request, &result)
+
+	result, err = api.Call(&request)
 	assert.Equal(t, err, nil)
 	assert.Equal(t, result["result"], "0x0000000000000000000000000000000000000000000000000000000000000017")
 
@@ -116,7 +118,7 @@ func Test_GetLogs(t *testing.T) {
 	api.s.chain.GetStore().PutReceipts(block.HeaderHash, []*types.Receipt{receipt})
 
 	// Verify the result
-	result := make([]map[string]interface{}, 0)
+	result := make([]GetLogsResponse, 0)
 	request := GetLogsRequest{
 		Height:          -1,
 		ContractAddress: contractAddress.ToHex(),
@@ -126,14 +128,13 @@ func Test_GetLogs(t *testing.T) {
 	err = api.GetLogs(&request, &result)
 	assert.Equal(t, err, nil)
 	assert.Equal(t, len(result), 1)
+	assert.Equal(t, result[0].Txhash, receipt.TxHash)
 
-	addr, ok := result[0]["address"].(string)
-	assert.Equal(t, ok, true)
-	assert.Equal(t, addr, contractAddress.ToHex())
+	addr := result[0].Log.Address
+	assert.Equal(t, addr, contractAddress)
 
-	name, ok := result[0]["topic"].(string)
-	assert.Equal(t, ok, true)
-	assert.Equal(t, name, "0xe84bb31d4e9adbff26e80edeecb6cf8f3a95d1ba519cf60a08a6e6f8d62d8100")
+	name := result[0].Log.Topics
+	assert.Equal(t, name[0].ToHex(), "0xe84bb31d4e9adbff26e80edeecb6cf8f3a95d1ba519cf60a08a6e6f8d62d8100")
 }
 
 func newTestAPI(t *testing.T, dbPath string) *PublicSeeleAPI {
@@ -188,4 +189,136 @@ func getFromAddress(statedb *state.Statedb) common.Address {
 	statedb.SetBalance(from, common.SeeleToFan)
 	statedb.SetNonce(from, 0)
 	return from
+}
+
+func Test_GetBlocks(t *testing.T) {
+	dbPath := filepath.Join(common.GetTempFolder(), ".GetBlocks")
+	if common.FileOrFolderExists(dbPath) {
+		os.RemoveAll(dbPath)
+	}
+	api := newTestAPI(t, dbPath)
+
+	block0 := newTestBlock(0)
+	err := api.s.chain.GetStore().PutBlock(block0, block0.Header.Difficulty, true)
+	assert.Equal(t, err, nil)
+	block1 := newTestBlock(1)
+	err = api.s.chain.GetStore().PutBlock(block1, block1.Header.Difficulty, true)
+	assert.Equal(t, err, nil)
+	block2 := newTestBlock(2)
+	err = api.s.chain.GetStore().PutBlock(block2, block2.Header.Difficulty, true)
+	assert.Equal(t, err, nil)
+	requestbyHeight := GetBlockByHeightRequest{
+		Height: 2,
+		FullTx: true,
+	}
+
+	request := &GetBlocksRequest{
+		GetBlockByHeightRequest: requestbyHeight,
+		Size: 2,
+	}
+	result := []map[string]interface{}{}
+	err = api.GetBlocks(request, &result)
+	assert.Equal(t, err, nil)
+	assert.Equal(t, len(result), 2)
+	assert.Equal(t, result[0]["height"].(uint64), uint64(2))
+	assert.Equal(t, result[0]["hash"].(string), block2.Header.Hash().ToHex())
+	assert.Equal(t, result[1]["height"].(uint64), uint64(1))
+	assert.Equal(t, result[1]["hash"].(string), block1.Header.Hash().ToHex())
+
+	request = &GetBlocksRequest{
+		GetBlockByHeightRequest: GetBlockByHeightRequest{
+			Height: -1,
+			FullTx: true,
+		},
+		Size: 1,
+	}
+	result = []map[string]interface{}{}
+	err = api.GetBlocks(request, &result)
+	assert.Equal(t, err == nil, true)
+	assert.Equal(t, len(result), 1)
+
+	request = &GetBlocksRequest{
+		GetBlockByHeightRequest: requestbyHeight,
+		Size: 6,
+	}
+	result = []map[string]interface{}{}
+	err = api.GetBlocks(request, &result)
+	assert.Equal(t, err == nil, true)
+	assert.Equal(t, len(result), 3)
+
+	request = &GetBlocksRequest{
+		GetBlockByHeightRequest: requestbyHeight,
+		Size: 600,
+	}
+	result = []map[string]interface{}{}
+	err = api.GetBlocks(request, &result)
+	assert.Equal(t, err == nil, true)
+	assert.Equal(t, len(result), 3)
+
+	request = &GetBlocksRequest{
+		GetBlockByHeightRequest: requestbyHeight,
+		Size: 0,
+	}
+	result = []map[string]interface{}{}
+	err = api.GetBlocks(request, &result)
+	assert.Equal(t, err == nil, true)
+	assert.Equal(t, len(result), 0)
+
+	request = &GetBlocksRequest{
+		GetBlockByHeightRequest: GetBlockByHeightRequest{
+			Height: 4,
+			FullTx: true,
+		},
+		Size: 2,
+	}
+	result = []map[string]interface{}{}
+	err = api.GetBlocks(request, &result)
+	assert.Equal(t, err != nil, true)
+	assert.Equal(t, len(result), 0)
+
+	request = &GetBlocksRequest{
+		GetBlockByHeightRequest: GetBlockByHeightRequest{
+			Height: 2,
+			FullTx: true,
+		},
+		Size: 3,
+	}
+	result = []map[string]interface{}{}
+	err = api.GetBlocks(request, &result)
+	assert.Equal(t, err == nil, true)
+	assert.Equal(t, len(result), 3)
+}
+
+func newTestBlock(height uint64) *types.Block {
+	header := &types.BlockHeader{
+		PreviousBlockHash: common.StringToHash("PreviousBlockHash"),
+		Creator:           *crypto.MustGenerateRandomAddress(),
+		StateHash:         common.StringToHash("StateHash"),
+		TxHash:            common.StringToHash("TxHash"),
+		Difficulty:        big.NewInt(1),
+		Height:            height,
+		CreateTimestamp:   big.NewInt(1),
+		Nonce:             1,
+		ExtraData:         make([]byte, 0),
+	}
+
+	tx := &types.Transaction{
+		Data: types.TransactionData{
+			From:    *crypto.MustGenerateRandomAddress(),
+			To:      *crypto.MustGenerateRandomAddress(),
+			Amount:  big.NewInt(3),
+			Fee:     big.NewInt(0),
+			Payload: make([]byte, 0),
+		},
+		Signature: crypto.Signature{Sig: []byte("test sig")},
+	}
+
+	tx.Hash = crypto.MustHash(tx.Data)
+
+	block := &types.Block{
+		HeaderHash:   header.Hash(),
+		Header:       header,
+		Transactions: []*types.Transaction{tx},
+	}
+	return block
 }
